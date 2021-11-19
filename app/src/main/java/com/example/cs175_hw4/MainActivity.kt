@@ -7,7 +7,6 @@ import android.os.Handler
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
-import android.view.View.OnFocusChangeListener
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
@@ -18,20 +17,26 @@ import com.google.gson.GsonBuilder
 import okhttp3.EventListener
 import okhttp3.Response
 import java.io.IOException
-import java.util.*
-
-
 
 
 class MainActivity : AppCompatActivity() {
 
+    class TimeConsumeInterceptor:Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val startTime = System.currentTimeMillis()
+            val resp =  chain.proceed(chain.request())
+            val endTime = System.currentTimeMillis()
+            val url = chain.request().url.toString()
+            Log.e("TimeConsumeInterceptor","request:$url cost time ${endTime - startTime}")
+            return resp
+        }
+    }
+
     private val handler = Handler()
 
     private lateinit var btn: Button
-    private lateinit var show_res: TextView
+    private lateinit var output_res: TextView
     private lateinit var input_words: EditText
-
-    private var mycache: HashMap<String,String> = HashMap<String,String>()
 
 
     val okhttpListener = object : EventListener()
@@ -63,7 +68,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         btn = findViewById(R.id.trans_btn)
-        show_res = findViewById(R.id.trans_output)
+        output_res = findViewById(R.id.trans_output)
         input_words = findViewById(R.id.trans_input)
 
         input_words.setOnClickListener(View.OnClickListener { v ->
@@ -73,7 +78,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
         input_words.setOnEditorActionListener(OnEditorActionListener { v, actionId, event ->
-//            input_words.isCursorVisible = false
+            input_words.setCursorVisible(false)
             if (event != null && event.keyCode == KeyEvent.KEYCODE_ENTER) {
                 val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.hideSoftInputFromWindow(
@@ -88,98 +93,52 @@ class MainActivity : AppCompatActivity() {
         btn.setOnClickListener {
             val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
-            get_translate_res()
+            translate()
         }
     }
 
-    fun get_translate_res(){
-        var res_msg=""
+    fun translate(){
+        var res = ""
         val input :String = input_words.text.toString()
         if (input==""){
             handler.post {
-                show_res.text=""
+                output_res.text=""
             }
         }
-        Log.e("input",input)
-        //check_cache
-        if(input in mycache.keys){
-            Log.e("cache", mycache[input].toString())
-            handler.post {
-                show_res.text=mycache[input].toString()
+        val url = "https://dict.youdao.com/jsonapi?q=" + input
+        request(url, object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (isChinese(input)){
+                    res =  "Fail to translate, please try again"
+                }
+                else{
+                    res = "获取信息失败，请重试"
+                }
+                handler.post {
+                    output_res.text = res
+                }
             }
-            return
-        }
-        //========================
+            override fun onResponse(call: Call, response: Response) {
+                val bodyString = response.body?.string()
+                var ans = gson.fromJson(bodyString,translator::class.java)
+                val nums = ans.web_trans?.web_translation?.get(0)?.trans?.size
+                var i = 0
+                while(i < nums!!.toInt()){
+                    res += (i+1).toString() + "."
+                    res += ans.web_trans?.web_translation?.get(0)?.trans?.get(i)?.value.toString() + "\n"
+                    i++
+                }
+                handler.post {
+                    output_res.text = res
+                }
+            }
+        })
 
-        if(containsHanScript(input)){
-            val url = getAPI_youdao(input)
-            request(url, object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    res_msg =  "error, please try it later......"
-                    handler.post {
-                        show_res.text=res_msg
-                    }
-                }
-                override fun onResponse(call: Call, response: Response) {
-                    val bodyString = response.body?.string()
-                    val ans = gson.fromJson(bodyString,Chinese2English::class.java)
-                    val nums = ans.web_trans?.web_translation?.get(0)?.trans?.size
-                    Log.e("num",nums.toString())
-                    var i = 0
-                    while(i < nums!!){
-                        res_msg += ans.web_trans?.web_translation?.get(0)?.trans?.get(i)?.value.toString()
-                        res_msg += ";"
-                        i++
-                    }
-                    mycache.put(input,res_msg)
-                    handler.post {
-                        show_res.text=res_msg
-                    }
-                }
-            })
-
-        }else{
-//          English2Chinese()
-            val url = getAPI_youdao(input)
-            request(url, object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    res_msg =  "错误，请稍后再尝试......"
-                    handler.post {
-                        show_res.text=res_msg
-                    }
-                }
-                override fun onResponse(call: Call, response: Response) {
-                    val bodyString = response.body?.string()
-                    Log.e("Get result",bodyString.toString())
-                    val ans = gson.fromJson(bodyString,English2Chinese::class.java)
-                    val nums = ans.web_trans?.web_translation?.get(0)?.trans?.size
-                    Log.e("num",nums.toString())
-                    var i= 0
-                    while(i< nums!!){
-                        res_msg +=ans.web_trans?.web_translation?.get(0)?.trans?.get(i)?.value.toString()
-                        res_msg +="; "
-                        i++
-                    }
-                    mycache.put(input,res_msg)
-                    handler.post {
-                        show_res.text=res_msg
-                    }
-                }
-            })
-
-        }
+    }
+    fun isChinese(msg:String):Boolean{
+        return Character.isIdeographic(Character.codePointAt(msg, 0))
     }
 }
 
 
 
-class TimeConsumeInterceptor:Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val startTime = System.currentTimeMillis()
-        val resp =  chain.proceed(chain.request())
-        val endTime = System.currentTimeMillis()
-        val url = chain.request().url.toString()
-        Log.e("TimeConsumeInterceptor","request:$url cost time ${endTime - startTime}")
-        return resp
-    }
-}

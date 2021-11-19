@@ -3,8 +3,10 @@
   <component name="DesignSurface">
     <option name="filePathToZoomLevelMap">
       <map>
+        <entry key="..\:/Android_WS/CS175_HW4/app/src/main/res/layout/activity_chinese2_english.xml" value="0.1296875" />
         <entry key="..\:/Android_WS/CS175_HW4/app/src/main/res/layout/activity_main.xml" value="0.1793478260869565" />
         <entry key="..\:/Android_WS/CS175_HW4/app/src/main/res/layout/activity_trans.xml" value="0.1793478260869565" />
+        <entry key="..\:/Android_WS/CS175_HW4/app/src/main/res/layout/activity_translator.xml" value="0.1296875" />
       </map>
     </option>
   </component>
